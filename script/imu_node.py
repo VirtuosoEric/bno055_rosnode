@@ -22,46 +22,60 @@ def imu_pub(wx,wy,wz,ax,ay,az):
 
 
 
-def imu_driver():
-    bno = BNO055.BNO055(serial_port='/dev/ttyUSB0')
+def imu_driver(device_port):
+    bno = BNO055.BNO055(serial_port=device_port)
+    initialized = False
 
-    # Enable verbose debug logging if -v is passed as a parameter.
-    # if len(sys.argv) == 2 and sys.argv[1].lower() == '-v':
-    #     logging.basicConfig(level=logging.DEBUG)
-    # Initialize the BNO055 and stop if something went wrong.
-    if not bno.begin():
-        raise RuntimeError('Failed to initialize BNO055! Is the sensor connected?')
+    while not initialized and not rospy.is_shutdown():
+        try:
+            # Enable verbose debug logging if -v is passed as a parameter.
+            # if len(sys.argv) == 2 and sys.argv[1].lower() == '-v':
+            #     logging.basicConfig(level=logging.DEBUG)
+            # Initialize the BNO055 and stop if something went wrong.
+            if not bno.begin():
+                raise RuntimeError('Failed to initialize BNO055! Is the sensor connected?')
+            
+            # Print system status and self test result.
+            status, self_test, error = bno.get_system_status()
+            print('System status: {0}'.format(status))
+            print('Self test result (0x0F is normal): 0x{0:02X}'.format(self_test))
+            # Print out an error if system status is in error mode.
+            if status == 0x01:
+                print('System error: {0}'.format(error))
+                print('See datasheet section 4.3.59 for the meaning.')
 
-    # Print system status and self test result.
-    status, self_test, error = bno.get_system_status()
-    print('System status: {0}'.format(status))
-    print('Self test result (0x0F is normal): 0x{0:02X}'.format(self_test))
-    # Print out an error if system status is in error mode.
-    if status == 0x01:
-        print('System error: {0}'.format(error))
-        print('See datasheet section 4.3.59 for the meaning.')
+            # Print BNO055 software revision and other diagnostic data.
+            sw, bl, accel, mag, gyro = bno.get_revision()
+            print('Software version:   {0}'.format(sw))
+            print('Bootloader version: {0}'.format(bl))
+            print('Accelerometer ID:   0x{0:02X}'.format(accel))
+            print('Magnetometer ID:    0x{0:02X}'.format(mag))
+            print('Gyroscope ID:       0x{0:02X}\n'.format(gyro))
+            initialized = True
+        except:
+            print 'initialization failed, retrying... '
+            pass
 
-    # Print BNO055 software revision and other diagnostic data.
-    sw, bl, accel, mag, gyro = bno.get_revision()
-    print('Software version:   {0}'.format(sw))
-    print('Bootloader version: {0}'.format(bl))
-    print('Accelerometer ID:   0x{0:02X}'.format(accel))
-    print('Magnetometer ID:    0x{0:02X}'.format(mag))
-    print('Gyroscope ID:       0x{0:02X}\n'.format(gyro))
+    
 
     while not rospy.is_shutdown():
-        # Gyroscope data (in degrees per second):
-        wx,wy,wz = bno.read_gyroscope()
+        try:
+            # Gyroscope data (in degrees per second):
+            wx,wy,wz = bno.read_gyroscope()
 
-        # Accelerometer data (in meters per second squared):
-        ax,ay,az = bno.read_accelerometer()
-        # print ('x=',x,' y=',y,' z=',z)
+            # Accelerometer data (in meters per second squared):
+            ax,ay,az = bno.read_accelerometer()
+            # print ('x=',x,' y=',y,' z=',z)
 
-        imu_pub(wx,wy,wz,ax,ay,az)
+            imu_pub(wx,wy,wz,ax,ay,az)
+        except:
+            print 'reading failed'
+            pass
 
 
 
 if __name__ == '__main__':
     rospy.init_node('imu_node', anonymous=False)
-    imu_driver()
+    device_port = rospy.get_param('~port', '/dev/ttyUSB0')
+    imu_driver(device_port)
     rospy.spin()
